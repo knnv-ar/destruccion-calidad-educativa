@@ -1,4 +1,4 @@
-# Calculadora de poder adquisitivo docentes universitarios
+# Calculadora de poder adquisitivo docentes y nodocentes universitarios
 
 ---
 
