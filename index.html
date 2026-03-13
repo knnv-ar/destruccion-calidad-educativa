@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Inflación y Salario</title>
+    <style>
+        :root {
+            --primary: #3498db;
+            --danger: #e74c3c;
+            --success: #27ae60;
+            --bg-color: #f4f4f9;
+            --text-color: #333;
+        }
+
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background-color: var(--bg-color); 
+            color: var(--text-color); 
+            padding: 20px; 
+            display: flex;
+            justify-content: center;
+        }
+
+        .container { 
+            width: 100%;
+            max-width: 500px; 
+            background: #fff; 
+            padding: 30px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+        }
+
+        h2 { 
+            font-size: 1.3rem; 
+            margin-top: 0;
+            margin-bottom: 25px; 
+            color: #2c3e50; 
+            text-align: center; 
+        }
+
+        .form-group { 
+            margin-bottom: 20px; 
+        }
+
+        label { 
+            display: block; 
+            font-weight: bold; 
+            margin-bottom: 8px; 
+            font-size: 0.95rem; 
+            color: #2c3e50;
+        }
+
+        .input-hint {
+            font-size: 0.78rem;
+            color: #7f8c8d;
+            margin-bottom: 6px;
+            margin-top: -4px;
+            display: block;
+            font-style: italic;
+        }
+
+        /* Usamos type="text" para poder formatear libremente */
+        input[type="text"] { 
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid #ccc; 
+            border-radius: 6px; 
+            box-sizing: border-box; 
+            font-size: 1.05rem;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.02em;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(52,152,219,0.15);
+        }
+
+        input[type="text"]::placeholder {
+            color: #bbb;
+            font-size: 0.95rem;
+        }
+
+        .result-box { 
+            background-color: #e8f4fd; 
+            padding: 15px; 
+            border-left: 4px solid var(--primary); 
+            margin-top: 10px; 
+            border-radius: 4px; 
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .result-box p { 
+            margin: 5px 0; 
+            font-size: 0.95rem; 
+        }
+
+        .highlight { 
+            font-weight: bold; 
+            font-size: 1.3rem; 
+            color: #2980b9; 
+        }
+
+        .danger-text { 
+            color: var(--danger); 
+            font-weight: bold; 
+            font-size: 1.3rem; 
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Calculadora de pérdida del poder adquisitivo de los sueldos de los docentes universitarios argentinos<br><small style="font-weight: normal; font-size: 1rem;">(Nov 2023 - Feb 2026)</small></h2>
+
+        <div class="form-group">
+            <label for="sueldoNov">1. Ingresá tu sueldo neto de noviembre 2023 ($):</label>
+            <span class="input-hint">Podés usar punto o coma para los centavos. Ej: 150000,50</span>
+            <input type="text" id="sueldoNov" placeholder="Ej: 100.000,00" inputmode="decimal" autocomplete="off">
+        </div>
+
+        <div class="result-box" id="resultadoIdealBox">
+            <p>Para empatar la inflación acumulada (280,32%), en febrero de 2026 deberías haber cobrado:</p>
+            <p class="highlight" id="sueldoIdeal">$0,00</p>
+        </div>
+
+        <div class="form-group" style="margin-top: 30px;">
+            <label for="sueldoFeb">2. Ingresá tu sueldo neto de febrero 2026 ($):</label>
+            <span class="input-hint">Podés usar punto o coma para los centavos. Ej: 380.000,00</span>
+            <input type="text" id="sueldoFeb" placeholder="Ej: 250.000,00" inputmode="decimal" autocomplete="off">
+        </div>
+
+        <div class="result-box" id="resultadoPerdidaBox" style="border-left-color: #e74c3c; background-color: #fceceb;">
+            <p id="textoPerdida">La pérdida de poder adquisitivo real de tu salario es del:</p>
+            <p class="danger-text" id="porcentajePerdida">0,00%</p>
+        </div>
+    </div>
+
+    <script>
+        // ─── Selectores del DOM ───────────────────────────────────────────────
+        const inputNov = document.getElementById('sueldoNov');
+        const inputFeb = document.getElementById('sueldoFeb');
+        const resultadoIdealBox = document.getElementById('resultadoIdealBox');
+        const sueldoIdealEl = document.getElementById('sueldoIdeal');
+        const resultadoPerdidaBox = document.getElementById('resultadoPerdidaBox');
+        const porcentajePerdidaEl = document.getElementById('porcentajePerdida');
+        const textoPerdidaEl = document.getElementById('textoPerdida');
+
+        // ─── Constante de inflación acumulada ────────────────────────────────
+        const MULTIPLICADOR_INFLACION = 3.803215;
+
+        // ─── Formateadores para pesos argentinos ─────────────────────────────
+        const formatCurrency = (number) =>
+            new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(number);
+
+        const formatPercent = (number) =>
+            new Intl.NumberFormat('es-AR', {
+                style: 'percent',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(number / 100);
+
+        // ─── Parsear string argentino a número flotante ───────────────────────
+        // Acepta: "1.250.000,50" | "1250000,50" | "1250000.50" | "1250000"
+        const parseArgentino = (str) => {
+            if (!str || str.trim() === '') return NaN;
+            let s = str.trim();
+
+            // Determinar si hay parte decimal
+            // Estrategia: el último separador (. o ,) que tenga exactamente 2 dígitos
+            // después se trata como decimal; el resto son separadores de miles.
+            const lastComma = s.lastIndexOf(',');
+            const lastDot   = s.lastIndexOf('.');
+
+            let intPart, decPart;
+
+            // Caso con coma como decimal (formato argentino estándar)
+            if (lastComma > lastDot) {
+                intPart = s.substring(0, lastComma).replace(/\./g, '');
+                decPart = s.substring(lastComma + 1);
+            }
+            // Caso con punto como decimal (el usuario tecleó punto anglosajón)
+            else if (lastDot > lastComma) {
+                intPart = s.substring(0, lastDot).replace(/,/g, '');
+                decPart = s.substring(lastDot + 1);
+            }
+            // Sin separador decimal
+            else {
+                intPart = s.replace(/[.,]/g, '');
+                decPart = '';
+            }
+
+            // Limpiar cualquier carácter no numérico residual
+            intPart = intPart.replace(/\D/g, '');
+            decPart = decPart.replace(/\D/g, '');
+
+            if (intPart === '' && decPart === '') return NaN;
+
+            const fullStr = decPart.length > 0
+                ? `${intPart || '0'}.${decPart}`
+                : `${intPart || '0'}`;
+
+            return parseFloat(fullStr);
+        };
+
+        // ─── Estado interno: dígitos crudos por campo ─────────────────────────
+        // Guardamos los dígitos SIN formato para no confundir puntos de miles
+        // con separadores decimales al releer el campo.
+        const rawDigits = { sueldoNov: '', sueldoFeb: '' };
+
+        // ─── Formatear el texto del campo mientras el usuario escribe ─────────
+        const formatearCampo = (input) => {
+            const typed = input.value;           // lo que hay en el campo ahora
+            const key   = input.id;
+
+            // Extraer solo los caracteres que el usuario puede haber tipeado:
+            // dígitos, más la última coma o punto si existe (separador decimal)
+            // Primero: detectar si hay separador decimal (coma o punto) en el texto tipeado.
+            // Usamos la posición de la ÚLTIMA coma, ignorando los puntos de miles
+            // que nosotros mismos pusimos.
+            // Estrategia: tomamos el valor crudo, quitamos todos los puntos (que son
+            // nuestros separadores de miles), y buscamos si queda alguna coma.
+            const sinPuntosMiles = typed.replace(/\./g, '');
+            const posComaDecimal = sinPuntosMiles.lastIndexOf(',');
+
+            let intDigits, decPart, hayDecimal;
+
+            if (posComaDecimal !== -1) {
+                // El usuario escribió una coma → separador decimal argentino
+                intDigits  = sinPuntosMiles.substring(0, posComaDecimal).replace(/\D/g, '');
+                decPart    = sinPuntosMiles.substring(posComaDecimal + 1).replace(/\D/g, '').substring(0, 2);
+                hayDecimal = true;
+            } else {
+                // Sin coma: puede haber un punto decimal ingresado por el usuario.
+                // Pero nosotros ya formateamos con puntos de miles, así que el único
+                // punto "del usuario" sería si el campo tuviera un punto donde NO
+                // corresponde un separador de miles. Detectamos esto comparando
+                // con los rawDigits previos: si el nuevo texto (sin puntos) tiene
+                // más dígitos de los esperados, es puro entero; si tiene igual cantidad
+                // pero termina en punto, es decimal.
+                // Simplificación segura: si el texto termina en "." lo tratamos como
+                // inicio de decimal; sino, todo son dígitos enteros.
+                if (typed.endsWith('.')) {
+                    intDigits  = typed.slice(0, -1).replace(/\D/g, '');
+                    decPart    = '';
+                    hayDecimal = true;
+                } else {
+                    intDigits  = typed.replace(/\D/g, '');
+                    decPart    = '';
+                    hayDecimal = false;
+                }
+            }
+
+            rawDigits[key] = intDigits + (hayDecimal ? ',' + decPart : '');
+
+            if (intDigits === '' && !hayDecimal) {
+                input.value = '';
+                return;
+            }
+
+            // Formatear parte entera con puntos de miles (es-AR)
+            const intFormatted = intDigits === ''
+                ? '0'
+                : new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
+                    .format(parseInt(intDigits, 10));
+
+            // Construir valor final del campo
+            const newVal = hayDecimal
+                ? intFormatted + ',' + decPart
+                : intFormatted;
+
+            // Preservar cursor
+            const cursorPos = input.selectionStart;
+            const prevLen   = typed.length;
+            input.value     = newVal;
+            const diff      = newVal.length - prevLen;
+            try { input.setSelectionRange(cursorPos + diff, cursorPos + diff); } catch(e) {}
+        };
+
+        // ─── Lógica principal de cálculo ──────────────────────────────────────
+        const calcularValores = () => {
+            const sueldoNov = parseArgentino(rawDigits.sueldoNov);
+            const sueldoFeb = parseArgentino(rawDigits.sueldoFeb);
+
+            if (!isNaN(sueldoNov) && sueldoNov > 0) {
+                const sueldoIdeal = sueldoNov * MULTIPLICADOR_INFLACION;
+                sueldoIdealEl.textContent = formatCurrency(sueldoIdeal);
+                resultadoIdealBox.style.display = 'block';
+
+                if (!isNaN(sueldoFeb) && sueldoFeb > 0) {
+                    const poderAdquisitivo = sueldoFeb / sueldoIdeal;
+                    const perdida = (1 - poderAdquisitivo) * 100;
+
+                    if (perdida > 0) {
+                        textoPerdidaEl.textContent = "Tu pérdida de poder adquisitivo real es del:";
+                        porcentajePerdidaEl.textContent = formatPercent(perdida);
+                        porcentajePerdidaEl.style.color = "var(--danger)";
+                        resultadoPerdidaBox.style.borderColor = "var(--danger)";
+                        resultadoPerdidaBox.style.backgroundColor = "#fceceb";
+                    } else {
+                        textoPerdidaEl.textContent = "¡Le ganaste a la inflación! Tu aumento real es del:";
+                        porcentajePerdidaEl.textContent = "+" + formatPercent(Math.abs(perdida));
+                        porcentajePerdidaEl.style.color = "var(--success)";
+                        resultadoPerdidaBox.style.borderColor = "var(--success)";
+                        resultadoPerdidaBox.style.backgroundColor = "#eafaf1";
+                    }
+                    resultadoPerdidaBox.style.display = 'block';
+                } else {
+                    resultadoPerdidaBox.style.display = 'none';
+                }
+            } else {
+                resultadoIdealBox.style.display = 'none';
+                resultadoPerdidaBox.style.display = 'none';
+            }
+        };
+
+        // ─── Listeners ────────────────────────────────────────────────────────
+        [inputNov, inputFeb].forEach(input => {
+            input.addEventListener('input', () => {
+                formatearCampo(input);
+                calcularValores();
+            });
+        });
+    </script>
+</body>
+</html>
